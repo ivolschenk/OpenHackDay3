@@ -1,0 +1,93 @@
+# This is a basic workflow to help you get started with Actions
+
+name: apis_poi_build_n_test
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the "main" branch
+     
+  pull_request:
+    branches: [ "main" ]
+    paths: "apis/poi/**"
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+env:
+  BUILD_ID: "0.0"
+  LOCATION: "westus"
+  RESOURCES_PREFIX: "devopsohteam10614"
+  WORKDIR: "apis/poi"
+  DOTNET_VERSION: "3.1.x"
+
+# Set defaults for GitHub Actions runner
+defaults:
+  run:
+    working-directory: "apis/poi"
+  
+  # A workflow run is made up of one or more jobs that can run sequentially or in parallel
+  
+jobs:
+    # Steps represent a sequence of tasks that will be executed as part of the job
+  build:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+    - uses: actions/checkout@v3
+    - name: Setup .NET Core SDK
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    - name: Build
+      run: dotnet build
+    - name: Test
+      run: dotnet test --filter "FullyQualifiedName~UnitTest" --logger "trx;LogFileName=UnitTestResults.trx" --results-directory ./TestResults
+    - name: "Publish test results"
+      if: success() || failure()
+      uses: dorny/test-reporter@v1
+      with:
+        name: Test results
+        path: "${{env.WORKDIR}}/TestResults/UnitTestResults.trx"
+        reporter: dotnet-trx
+        fail-on-error: false
+      
+    - name: "Create a PR comment"
+      if: failure() && github.event_name == 'pull_request'
+      run: |
+        body='### Unit Test `failure`
+        <details>
+        <summary>Workflow details</summary>
+
+        Workflow name: `${{ github.workflow }}`
+        Action: `${{ github.event_name }}`
+        Job: `${{ github.job }}`
+        PR: #${{ github.event.number }}
+        </details>
+
+        Test details: [Run #${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+        Pusher: @${{ github.actor }}'
+
+        gh pr comment ${{ github.event.number }} --body "${body}"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}      
+      
+        
+    - name: "Create an issue (bug)"
+      if: failure() && github.event_name == 'pull_request'
+      run: |
+        body='### Unit Test `failure`
+        <details>
+        <summary>Workflow details</summary>
+        Workflow name: `${{ github.workflow }}`
+        Action: `${{ github.event_name }}`
+        Job: `${{ github.job }}`
+        PR: #${{ github.event.number }}
+        </details>
+        Test details: [Run #${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+        Pusher: @${{ github.actor }}'
+        title='Unit Tests failure'
+        gh issue create --title "${title}" --body "${body}" --label bug --assignee ${{ github.actor }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

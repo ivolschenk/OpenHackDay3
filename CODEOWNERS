@@ -1,0 +1,8 @@
+# In this example, @octocat owns any file in the `/apps`
+# directory in the root of your repository except for the `/apps/github`
+# subdirectory, as its owners are left empty.
+/iac/ @thokalad @andeyl44 @super8bit @ivolschenk @cameroncoburn @Akshroon
+/apis/poi/ @thokalad @andeyl44 @super8bit @ivolschenk @cameroncoburn @Akshroon
+/apis/trips/ @thokalad @andeyl44 @super8bit @ivolschenk @cameroncoburn @Akshroon
+/apis/user-java/ @thokalad @andeyl44 @super8bit @ivolschenk @cameroncoburn @Akshroon
+/apis/userprofile/ @thokalad @andeyl44 @super8bit @ivolschenk @cameroncoburn @Akshroon

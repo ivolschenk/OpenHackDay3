@@ -1,0 +1,101 @@
+name: Build and deploy API POI
+
+env:
+  AZURE_WEBAPP_NAME: devopsohteam10614poi
+  AZURE_RG: devopsohteam10614rg
+  AZURE_REPO: devopsoh/api-poi
+  AZURE_ENV: staging
+
+on:
+  push:
+    branches: [ "main" ]
+    paths: "apis/poi/**"
+    
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  
+defaults:
+  run:
+    working-directory: "apis/poi/web"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    outputs:
+        GITHUB_RUNID: ${{ steps.githubID.outputs.tag }}
+    steps:
+    - name: 'Login via Azure CLI and build image'
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    - name: 'Checkout the code'
+      uses: actions/checkout@v2
+    - name: 'Run to build image'
+      run: |
+        az acr build --build-arg build_version=${{ github.run_id }} -t devopsoh/api-poi:${{ github.run_id }} -r devopsohteam10614cr.azurecr.io .
+    - name: 'Echo Github ID'
+      id: githubID
+      run: |
+            echo "::set-output name=tag::${{ github.run_id }}"
+            
+  deploy:
+    permissions:
+      contents: none
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: 'staging'
+      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+
+    steps:
+      #- name: Lowercase the repo name and username
+      #  run: echo "REPO=${{ env.AZURE_REPO }}" >>${{ env.AZURE_ENV }}
+      
+      - name: "Azure Login"
+        uses: Azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}    
+          
+      - name: Deploy to Azure Web App
+        id: deploy-to-webapp
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          # publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          images: 'devopsohteam10614cr.azurecr.io/${{ env.AZURE_REPO }}:${{ needs.build.outputs.GITHUB_RUNID }}'
+          slot-name: 'staging'
+          
+  health-check:
+    runs-on: ubuntu-latest
+    needs: deploy
+    steps:
+    - name: Execute health check
+      uses: jtalk/url-health-check-action@v2
+      with:
+          # Check the following URLs one by one sequentially
+          url: https://devopsohteam10614poi-staging.azurewebsites.net/api/healthcheck/poi
+          # Follow redirects, or just report success on 3xx status codes
+          follow-redirect: false # Optional, defaults to "false"
+          # Fail this action after this many failed attempts
+          max-attempts: 3 # Optional, defaults to 1
+          # Delay between retries
+          retry-delay: 5s # Optional, only applicable to max-attempts > 1
+          # Retry all errors, including 404. This option might trigger curl upgrade.
+          retry-all: false # Optional, defaults to "false"
+          
+  swap:   
+    runs-on: ubuntu-latest
+    needs: health-check
+    steps:
+      - name: "Azure Login"
+        uses: Azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }} 
+
+      - name: "Do slot swap"
+        working-directory: /
+        run: |
+          az webapp deployment slot swap --name ${{env.AZURE_WEBAPP_NAME}} --resource-group ${{env.AZURE_RG}} --slot staging
